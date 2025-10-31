@@ -7,14 +7,18 @@
 #include <iostream>
 #include <omp.h>
 
-using namespace std;
+#include "GpuGravity.h"
 
+using namespace std;
 
 ModelNBody::ModelNBody()
     :IModel("N-Body simulation (2D)")
     ,_pInitial(nullptr)
     ,_pAux(nullptr)
     ,_root(BHTreeNode(Vec2D(), Vec2D()))
+    ,_gpuGravity(std::make_unique<GpuGravity>())
+    ,_gpuInitialized(false)
+    ,_gpuFailed(false)
     ,_min()
     ,_max()
     ,_center()
@@ -534,27 +538,57 @@ void ModelNBody::Eval(double *a_state, double a_time, double *a_deriv)
     CalcBHArea(all);
     BuiltTree(all);
 
-#pragma omp parallel for
-    for (int i = 1; i < _num; ++i)
+    bool computedOnGpu = false;
+    if (!_gpuFailed)
     {
-        ParticleData p(&pState[i], &_pAux[i]);
-        Vec2D acc = _root.CalcForce(p);
-        pDeriv[i].ax = acc.x;
-        pDeriv[i].ay = acc.y;
-        pDeriv[i].vx = pState[i].vx;
-        pDeriv[i].vy = pState[i].vy;
+        if (!_gpuInitialized)
+        {
+            _gpuInitialized = _gpuGravity && _gpuGravity->Initialize();
+            if (!_gpuInitialized)
+                _gpuFailed = true;
+        }
+
+        if (_gpuInitialized && _gpuGravity)
+        {
+            computedOnGpu = _gpuGravity->Compute(_num,
+                                                 pState,
+                                                 _pAux,
+                                                 pDeriv,
+                                                 static_cast<float>(gamma_1),
+                                                 gpu_soft);
+            if (!computedOnGpu)
+                _gpuFailed = true;
+        }
     }
 
-    // Particle 0 is calculated last, because the statistics
-    // data relate to this particle. They would be overwritten
-    // otherwise
-    _root.StatReset();
-    ParticleData p(&pState[0], &_pAux[0]);
-    Vec2D acc = _root.CalcForce(p);
-    pDeriv[0].ax = acc.x;
-    pDeriv[0].ay = acc.y;
-    pDeriv[0].vx = pState[0].vx;
-    pDeriv[0].vy = pState[0].vy;
+    if (!computedOnGpu)
+    {
+#pragma omp parallel for
+        for (int i = 1; i < _num; ++i)
+        {
+            ParticleData p(&pState[i], &_pAux[i]);
+            Vec2D acc = _root.CalcForce(p);
+            pDeriv[i].ax = acc.x;
+            pDeriv[i].ay = acc.y;
+            pDeriv[i].vx = pState[i].vx;
+            pDeriv[i].vy = pState[i].vy;
+        }
+
+        // Particle 0 is calculated last, because the statistics
+        // data relate to this particle. They would be overwritten
+        // otherwise
+        _root.StatReset();
+        ParticleData p(&pState[0], &_pAux[0]);
+        Vec2D acc = _root.CalcForce(p);
+        pDeriv[0].ax = acc.x;
+        pDeriv[0].ay = acc.y;
+        pDeriv[0].vx = pState[0].vx;
+        pDeriv[0].vy = pState[0].vy;
+    }
+    else
+    {
+        _root.StatReset();
+    }
 
     // Save vectors for camera orientations
     //  m_camDir.x = pState[0].x - pState[4000].x;

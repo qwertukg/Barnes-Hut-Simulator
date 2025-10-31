@@ -9,6 +9,8 @@
 #include "BHTree.h"
 #include "Types.h"
 
+#include <memory>
+
 
 /** \brief Model class for handling th n-body problem. */
 class ModelNBody final : public IModel
@@ -52,6 +54,9 @@ private:
     PODAuxState *_pAux;         ///< Auxilliary state information
 
     BHTreeNode _root;           ///< The root node of the barnes hut tree
+    std::unique_ptr<class GpuGravity> _gpuGravity;
+    bool _gpuInitialized;
+    bool _gpuFailed;
     Vec2D _min;                 ///< Upper left corner of the bounding box containing all particles
     Vec2D _max;                 ///< Lower right corner of the bounding box containing all particles
     Vec2D _center;              ///< The center of the simulation, the barnes hut tree is centered at this point
@@ -61,7 +66,8 @@ private:
     double _timeStep;
 
     static constexpr double gamma_1 = Constants::Gamma / (Constants::ParsecInMeter * Constants::ParsecInMeter * Constants::ParsecInMeter) * Constants::MassOfSun * (365.25 * 86400) * (365.25 * 86400);
-  
+    static constexpr float gpu_soft = 0.1f * 0.1f;
+
     int _num;
     bool _bVerbose;
 };
