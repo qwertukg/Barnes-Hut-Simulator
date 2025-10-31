@@ -49,6 +49,7 @@ set(SOURCES
     src/IntegratorRK5.cpp
     src/IntegratorRKF4.cpp
     src/ModelNBody.cpp
+    src/GpuGravity.cpp
     src/NBodyWnd.cpp
     src/SDLWnd.cpp
     src/Types.cpp
