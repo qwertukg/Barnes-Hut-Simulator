@@ -1,0 +1,65 @@
+#version 460 core
+
+layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+    vec4 posMass;
+    vec4 vel;
+};
+
+layout(std430, binding = 0) buffer Particles {
+    Particle particles[];
+};
+
+uniform float dt;
+uniform float g;
+uniform float softening;
+uniform uint particleCount;
+
+shared vec4 sharedPosMass[128];
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= particleCount) {
+        return;
+    }
+
+    vec3 position = particles[id].posMass.xyz;
+    float mass = particles[id].posMass.w;
+    vec3 velocity = particles[id].vel.xyz;
+
+    vec3 acceleration = vec3(0.0);
+
+    uint tiles = (particleCount + gl_WorkGroupSize.x - 1u) / gl_WorkGroupSize.x;
+
+    for (uint tile = 0u; tile < tiles; ++tile) {
+        uint idx = tile * gl_WorkGroupSize.x + gl_LocalInvocationID.x;
+        if (idx < particleCount) {
+            sharedPosMass[gl_LocalInvocationID.x] = particles[idx].posMass;
+        } else {
+            sharedPosMass[gl_LocalInvocationID.x] = vec4(0.0);
+        }
+        barrier();
+
+        uint tileCount = min(gl_WorkGroupSize.x, particleCount - tile * gl_WorkGroupSize.x);
+        for (uint j = 0u; j < tileCount; ++j) {
+            uint otherIndex = tile * gl_WorkGroupSize.x + j;
+            if (otherIndex == id) {
+                continue;
+            }
+
+            vec3 diff = sharedPosMass[j].xyz - position;
+            float distSqr = dot(diff, diff) + softening;
+            float invDist = inversesqrt(distSqr);
+            float invDist3 = invDist * invDist * invDist;
+            acceleration += diff * (g * sharedPosMass[j].w * invDist3);
+        }
+        barrier();
+    }
+
+    velocity += acceleration * dt;
+    position += velocity * dt;
+
+    particles[id].vel = vec4(velocity, 0.0);
+    particles[id].posMass = vec4(position, mass);
+}
