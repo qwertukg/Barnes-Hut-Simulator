@@ -9,3 +9,16 @@ German Article:
 * [Barnes-Hut Galaxiensimulation](https://beltoforion.de/de/barnes-hut-galaxiensimulation/)
 
 ![](https://beltoforion.de/en/barnes-hut-galaxy-simulator/images/anim.gif)
+
+## Kotlin/LWJGL GPU simulation
+
+This repository now also contains a Kotlin implementation that offloads the
+gravity calculation to the GPU via OpenGL 4.6 compute shaders. The project is
+configured with Gradle:
+
+```bash
+gradle run  # use ./gradlew run if you generate a Gradle wrapper
+```
+
+The new application lives under `src/main/kotlin` and uses LWJGL to drive both
+the compute shader and the point rendering pipeline.
